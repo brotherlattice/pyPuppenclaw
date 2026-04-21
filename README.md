@@ -57,3 +57,16 @@ python -m pip install -e .[dev]
 pytest
 ruff check .
 ```
+
+## Documentation
+
+`pyPuppenclaw` now has the same Read the Docs deployment path shape as `pyflowreg`: a repository-level `.readthedocs.yaml`, a Sphinx configuration in `docs/conf.py`, and a package `docs` extra in `pyproject.toml`.
+
+Local docs build:
+
+```bash
+python -m pip install -e .[docs]
+sphinx-build -b html docs docs/_build/html
+```
+
+GitHub Actions validates the docs build, while hosted publication is intended to come from Read the Docs after the repository is connected there.
