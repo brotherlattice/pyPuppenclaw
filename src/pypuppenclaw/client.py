@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, TypeVar
+from typing import Any, TypeVar, overload
 from urllib.parse import quote
 
 import httpx
@@ -63,6 +63,8 @@ class _BaseAPI:
 
 
 class SessionsAPI(_BaseAPI):
+    """Session management endpoints exposed by the Puppenclaw daemon."""
+
     def list(self) -> OperationResult[SessionsListDetails]:
         return self._tool_request("GET", "/sessions", model=SessionsListDetails)
 
@@ -123,6 +125,8 @@ class SessionsAPI(_BaseAPI):
 
 
 class OrchestratorAPI(_BaseAPI):
+    """Project, campaign, and artifact orchestration endpoints."""
+
     def create_project(
         self, request: ProjectCreateRequest
     ) -> OperationResult[ProjectCreateDetails]:
@@ -157,7 +161,17 @@ class OrchestratorAPI(_BaseAPI):
             json_body=request.model_dump(by_alias=True, exclude_none=True),
         )
 
-    def status(self, query: CampaignStatusQuery | None = None) -> OperationResult[Any]:
+    @overload
+    def status(self, query: None = None) -> OperationResult[OrchestratorStatusSummary]: ...
+
+    @overload
+    def status(
+        self, query: CampaignStatusQuery
+    ) -> OperationResult[CampaignStatusSnapshot | OrchestratorStatusSummary]: ...
+
+    def status(
+        self, query: CampaignStatusQuery | None = None
+    ) -> OperationResult[CampaignStatusSnapshot | OrchestratorStatusSummary]:
         resolved = query or CampaignStatusQuery()
         params = _normalize_query(resolved.model_dump(by_alias=True, exclude_none=True))
         if resolved.campaign_id is not None:
@@ -203,6 +217,8 @@ class OrchestratorAPI(_BaseAPI):
 
 
 class SiteAPI(_BaseAPI):
+    """Site-level status, log, and shutdown endpoints."""
+
     def status(
         self, verbose: bool = False, format: str | None = None
     ) -> OperationResult[SiteStatus]:
@@ -228,6 +244,8 @@ class SiteAPI(_BaseAPI):
 
 
 class PuppenclawClient:
+    """Typed synchronous HTTP client for the local Puppenclaw daemon."""
+
     def __init__(
         self,
         base_url: str,
@@ -240,6 +258,12 @@ class PuppenclawClient:
         self.sessions = SessionsAPI(self)
         self.orchestrator = OrchestratorAPI(self)
         self.site = SiteAPI(self)
+
+    def __enter__(self) -> PuppenclawClient:
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        self.close()
 
     def close(self) -> None:
         self._client.close()

@@ -4,8 +4,11 @@ import json
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from pypuppenclaw.bootstrap import PuppenclawInstaller
 from pypuppenclaw.config import SourceSettings, WrapperSettings
+from pypuppenclaw.errors import DependencyError
 
 
 def test_checkout_install_builds_when_daemon_entry_is_missing(tmp_path: Path, monkeypatch) -> None:
@@ -48,3 +51,40 @@ def test_binary_install_uses_explicit_daemon_command(tmp_path: Path) -> None:
 
     assert manifest.source_kind == "binary"
     assert manifest.daemon_command == ["puppenclaw-daemon"]
+
+
+def test_verify_node_version_accepts_wrapped_output(tmp_path: Path, monkeypatch) -> None:
+    settings = WrapperSettings(source=SourceSettings(kind="checkout", checkoutPath=tmp_path))
+    installer = PuppenclawInstaller(settings, manifest_path=tmp_path / "manifest.json")
+
+    monkeypatch.setattr(
+        installer,
+        "_run_command",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args,
+            0,
+            stdout="Now using node v22.13.1 (npm v10.9.0)\n",
+            stderr="",
+        ),
+    )
+
+    installer._verify_node_version()
+
+
+def test_verify_node_version_rejects_old_versions(tmp_path: Path, monkeypatch) -> None:
+    settings = WrapperSettings(source=SourceSettings(kind="checkout", checkoutPath=tmp_path))
+    installer = PuppenclawInstaller(settings, manifest_path=tmp_path / "manifest.json")
+
+    monkeypatch.setattr(
+        installer,
+        "_run_command",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args,
+            0,
+            stdout="v22.12.0\n",
+            stderr="",
+        ),
+    )
+
+    with pytest.raises(DependencyError, match="Node >=22.13"):
+        installer._verify_node_version()

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
+from ._io import atomic_write_text
 from .config import WrapperSettings, ensure_checkout_path
 from .errors import DependencyError, InstallationError
 from .models import InstallManifest
@@ -17,6 +19,8 @@ def _utc_now() -> str:
 
 
 class PuppenclawInstaller:
+    """Resolve or build the local Puppenclaw daemon and persist its install manifest."""
+
     def __init__(
         self,
         settings: WrapperSettings,
@@ -107,17 +111,14 @@ class PuppenclawInstaller:
             capture_output=True,
             cwd=Path.cwd(),
         )
-        version_text = result.stdout.strip().lstrip("v")
-        parts = version_text.split(".")
-        try:
-            major, minor = int(parts[0]), int(parts[1])
-        except (IndexError, ValueError) as error:  # pragma: no cover
-            raise DependencyError(
-                f"Unable to parse Node version: {result.stdout.strip()}"
-            ) from error
+        output = "\n".join(part.strip() for part in (result.stdout, result.stderr) if part.strip())
+        match = re.search(r"v?(\d+)\.(\d+)\.(\d+)", output)
+        if match is None:  # pragma: no cover
+            raise DependencyError(f"Unable to parse Node version: {output or result.stdout!r}")
+        major, minor = int(match.group(1)), int(match.group(2))
         if (major, minor) < (22, 13):
             raise DependencyError(
-                f"Puppenclaw requires Node >=22.13, found {result.stdout.strip()}."
+                f"Puppenclaw requires Node >=22.13, found {output or result.stdout.strip()}."
             )
 
     def _run_command(
@@ -145,8 +146,7 @@ class PuppenclawInstaller:
             raise InstallationError(f"Failed to run command {' '.join(args)}: {error}") from error
 
     def _write_manifest(self, manifest: InstallManifest) -> None:
-        self.manifest_path.parent.mkdir(parents=True, exist_ok=True)
-        self.manifest_path.write_text(
+        atomic_write_text(
+            self.manifest_path,
             manifest.model_dump_json(indent=2, by_alias=True),
-            encoding="utf-8",
         )

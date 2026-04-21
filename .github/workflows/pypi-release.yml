@@ -32,7 +32,7 @@ jobs:
       - run: python -m pip install -U pip
       - run: python -m pip install -e .[dev]
       - run: ruff check .
-      - run: pytest
+      - run: pytest -m "not live"
 
   build:
     needs: [test]

@@ -3,7 +3,10 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 from pypuppenclaw.daemon import PuppenclawManager
+from pypuppenclaw.errors import DaemonProcessError
 from pypuppenclaw.models import DaemonRuntimeInfo, InstallManifest
 
 
@@ -82,4 +85,36 @@ def test_manager_cleans_stale_runtime(temp_settings, tmp_path: Path) -> None:
     status = manager.status()
 
     assert status.running is False
+    assert runtime_path.exists() is False
+
+
+def test_manager_surfaces_startup_failure_logs(temp_settings, tmp_path: Path) -> None:
+    script = tmp_path / "fail_daemon.py"
+    script.write_text(
+        "from __future__ import annotations\n"
+        "print('boot failed: port already in use', flush=True)\n"
+        "raise SystemExit(17)\n",
+        encoding="utf-8",
+    )
+    manifest = InstallManifest(
+        sourceKind="binary",
+        sourcePath=str(tmp_path),
+        daemonCommand=[sys.executable, str(script)],
+        packageName="fake",
+        version="0.0.0",
+        installedAt="2026-01-01T00:00:00Z",
+    )
+    pid_path = tmp_path / "daemon.pid"
+    runtime_path = tmp_path / "runtime.json"
+    manager = PuppenclawManager(
+        temp_settings,
+        installer=StubInstaller(manifest),
+        pid_path=pid_path,
+        runtime_path=runtime_path,
+    )
+
+    with pytest.raises(DaemonProcessError, match="boot failed: port already in use"):
+        manager.start()
+
+    assert pid_path.exists() is False
     assert runtime_path.exists() is False

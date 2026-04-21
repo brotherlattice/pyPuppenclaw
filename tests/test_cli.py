@@ -6,6 +6,11 @@ from pathlib import Path
 from pypuppenclaw.cli import main
 
 
+class _StatusStub:
+    def model_dump_json(self, **_kwargs) -> str:
+        return json.dumps({"running": False})
+
+
 def test_cli_config_init_and_status(temp_settings, tmp_path: Path, monkeypatch, capsys) -> None:
     config_path = tmp_path / "config.toml"
     monkeypatch.setattr("pypuppenclaw.cli.load_settings", lambda _path: temp_settings)
@@ -19,11 +24,7 @@ def test_cli_config_init_and_status(temp_settings, tmp_path: Path, monkeypatch, 
             pass
 
         def status(self):
-            return type(
-                "Status",
-                (),
-                {"model_dump_json": lambda self, **_kwargs: json.dumps({"running": False})},
-            )()
+            return _StatusStub()
 
     monkeypatch.setattr("pypuppenclaw.cli.PuppenclawManager", StubManager)
     assert main(["--config", str(config_path), "status"]) == 0

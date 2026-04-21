@@ -7,9 +7,11 @@ import time
 from contextlib import suppress
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import TextIO
 
 import httpx
 
+from ._io import atomic_write_text
 from .bootstrap import PuppenclawInstaller
 from .config import WrapperSettings, write_generated_puppenclaw_config
 from .errors import DaemonProcessError, DaemonTimeoutError
@@ -22,6 +24,8 @@ def _utc_now() -> str:
 
 
 class PuppenclawManager:
+    """Manage a local Puppenclaw daemon process and its runtime metadata."""
+
     def __init__(
         self,
         settings: WrapperSettings,
@@ -35,7 +39,7 @@ class PuppenclawManager:
         self.pid_path = (pid_path or default_pid_path()).expanduser().resolve()
         self.runtime_path = (runtime_path or default_runtime_path()).expanduser().resolve()
         self._process: subprocess.Popen[str] | None = None
-        self._log_handle = None
+        self._log_handle: TextIO | None = None
 
     def install(self) -> InstallManifest:
         return self.installer.install()
@@ -86,6 +90,9 @@ class PuppenclawManager:
         try:
             self._process = subprocess.Popen(command, **popen_kwargs)
         except OSError as error:
+            if self._log_handle is not None:
+                self._log_handle.close()
+                self._log_handle = None
             raise DaemonProcessError(f"Failed to start Puppenclaw daemon: {error}") from error
 
         runtime = DaemonRuntimeInfo(
@@ -98,8 +105,12 @@ class PuppenclawManager:
             startedAt=_utc_now(),
         )
         self._write_runtime(runtime)
-        self.pid_path.write_text(str(runtime.pid), encoding="utf-8")
-        self.wait_until_ready()
+        atomic_write_text(self.pid_path, f"{runtime.pid}\n")
+        try:
+            self.wait_until_ready()
+        except Exception:
+            self._cleanup_failed_startup()
+            raise
         return ManagedDaemonStatus(
             running=True,
             healthy=True,
@@ -195,6 +206,10 @@ class PuppenclawManager:
         deadline = time.monotonic() + self.settings.daemon.startup_timeout
         last_error: Exception | None = None
         while time.monotonic() < deadline:
+            if self._process is not None:
+                returncode = self._process.poll()
+                if returncode is not None:
+                    raise self._build_startup_failure(returncode)
             try:
                 status = self.healthcheck()
                 if status.ok:
@@ -223,10 +238,9 @@ class PuppenclawManager:
                 client.post(f"{self.settings.daemon.base_url}/shutdown")
 
     def _write_runtime(self, runtime: DaemonRuntimeInfo) -> None:
-        self.runtime_path.parent.mkdir(parents=True, exist_ok=True)
-        self.runtime_path.write_text(
+        atomic_write_text(
+            self.runtime_path,
             runtime.model_dump_json(indent=2, by_alias=True),
-            encoding="utf-8",
         )
 
     def _load_runtime(self) -> DaemonRuntimeInfo | None:
@@ -252,10 +266,49 @@ class PuppenclawManager:
         except subprocess.TimeoutExpired:
             return False
 
+    def _cleanup_failed_startup(self) -> None:
+        if self._process is not None and self._process.poll() is None:
+            with suppress(OSError):
+                self._process.terminate()
+            if not self._wait_for_owned_process(
+                self._process.pid,
+                min(self.settings.daemon.stop_timeout, 2.0),
+            ):
+                with suppress(OSError):
+                    self._process.kill()
+                self._wait_for_owned_process(self._process.pid, 1.0)
+        self._cleanup_runtime_files()
+
+    def _build_startup_failure(self, returncode: int) -> DaemonProcessError:
+        runtime = self._load_runtime()
+        log_path = (
+            Path(runtime.log_path)
+            if runtime is not None
+            else self.settings.daemon.log_dir / "puppenclaw-daemon.log"
+        )
+        log_tail = _read_log_tail(log_path)
+        message = "Puppenclaw daemon exited before becoming healthy " f"(exit code {returncode})."
+        if log_path.exists():
+            message += f" Log: {log_path}."
+        if log_tail:
+            message += f" Last log lines:\n{log_tail}"
+        return DaemonProcessError(message)
+
 
 def _pid_exists(pid: int) -> bool:
     try:
         os.kill(pid, 0)
-    except OSError:
+    except ProcessLookupError:
         return False
+    except PermissionError:
+        return True
+    except OSError:
+        return True
     return True
+
+
+def _read_log_tail(path: Path, *, max_lines: int = 20) -> str:
+    if not path.exists():
+        return ""
+    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    return "\n".join(lines[-max_lines:])

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -9,12 +10,12 @@ from pypuppenclaw.config import DaemonSettings, SourceSettings, WrapperSettings
 
 
 @pytest.fixture()
-def temp_settings(tmp_path: Path) -> WrapperSettings:
+def temp_settings(tmp_path: Path, free_tcp_port_factory: Callable[[], int]) -> WrapperSettings:
     return WrapperSettings(
         source=SourceSettings(kind="binary", daemonCommand=[sys.executable]),
         daemon=DaemonSettings(
             host="127.0.0.1",
-            port=18895,
+            port=free_tcp_port_factory(),
             stateDir=tmp_path / "state",
             dataDir=tmp_path / "data",
             logDir=tmp_path / "logs",

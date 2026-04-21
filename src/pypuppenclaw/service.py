@@ -7,9 +7,12 @@ from .bootstrap import PuppenclawInstaller
 from .client import PuppenclawClient
 from .config import WrapperSettings, load_settings
 from .daemon import PuppenclawManager
+from .models import InstallManifest, ManagedDaemonStatus
 
 
 class PuppenclawService:
+    """High-level wrapper that composes installation, daemon lifecycle, and client access."""
+
     def __init__(
         self,
         settings: WrapperSettings | None = None,
@@ -26,17 +29,20 @@ class PuppenclawService:
             timeout=self.settings.daemon.request_timeout,
         )
 
-    def install(self):
+    def install(self) -> InstallManifest:
         return self.manager.install()
 
-    def start(self):
+    def start(self) -> ManagedDaemonStatus:
         return self.manager.start()
 
-    def stop(self):
+    def stop(self) -> ManagedDaemonStatus:
         return self.manager.stop()
 
-    def status(self):
+    def status(self) -> ManagedDaemonStatus:
         return self.manager.status()
+
+    def close(self) -> None:
+        self.client.close()
 
     @contextmanager
     def running(self, *, ensure_install: bool = True) -> Iterator[PuppenclawClient]:

@@ -46,6 +46,7 @@ def main(argv: list[str] | None = None) -> int:
             print(str(path))
             return 0
         if args.command == "doctor":
+            manifest = installer.load_manifest()
             report = {
                 "config_path": str(args.config.expanduser().resolve()),
                 "source_kind": settings.source.kind,
@@ -56,9 +57,7 @@ def main(argv: list[str] | None = None) -> int:
                 "state_dir": str(settings.daemon.state_dir),
                 "data_dir": str(settings.daemon.data_dir),
                 "log_dir": str(settings.daemon.log_dir),
-                "install_manifest": installer.load_manifest().model_dump(by_alias=True)
-                if installer.load_manifest()
-                else None,
+                "install_manifest": manifest.model_dump(by_alias=True) if manifest else None,
             }
             print(json.dumps(report, indent=2))
             return 0

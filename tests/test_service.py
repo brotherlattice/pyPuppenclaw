@@ -25,7 +25,11 @@ class StubManager:
 
 
 class StubClient:
-    pass
+    def __init__(self) -> None:
+        self.closed = False
+
+    def close(self) -> None:
+        self.closed = True
 
 
 def test_service_running_context_starts_and_stops(temp_settings) -> None:
@@ -41,3 +45,17 @@ def test_service_running_context_starts_and_stops(temp_settings) -> None:
         assert yielded is client
 
     assert manager.calls == ["install", "start", "stop"]
+
+
+def test_service_close_closes_client(temp_settings) -> None:
+    manager = StubManager()
+    client = StubClient()
+    service = PuppenclawService(
+        settings=temp_settings,
+        manager=manager,
+        client=client,
+    )
+
+    service.close()
+
+    assert client.closed is True

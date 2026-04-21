@@ -13,6 +13,7 @@ dist/
 docs/_build/
 site/
 *.log
+src/pypuppenclaw/_version.py
 .idea/
 .vscode/
 nul

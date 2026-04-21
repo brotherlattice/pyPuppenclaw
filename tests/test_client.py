@@ -171,36 +171,34 @@ def _transport() -> httpx.MockTransport:
 
 
 def test_client_parses_health_and_tool_results() -> None:
-    client = PuppenclawClient(
-        "http://puppenclaw.test",
-        client=httpx.Client(base_url="http://puppenclaw.test", transport=_transport()),
-    )
+    raw_client = httpx.Client(base_url="http://puppenclaw.test", transport=_transport())
 
-    assert client.health().ok is True
-    assert client.sessions.list().details.sessions == []
-    assert client.sessions.get("demo").details.session.name == "demo"
-    assert (
-        client.sessions.send(SendSessionRequest(name="demo", message="hello")).details.output
-        == "Handled: hello"
-    )
+    with PuppenclawClient("http://puppenclaw.test", client=raw_client) as client:
+        assert client.health().ok is True
+        assert client.sessions.list().details.sessions == []
+        assert client.sessions.get("demo").details.session.name == "demo"
+        assert (
+            client.sessions.send(SendSessionRequest(name="demo", message="hello")).details.output
+            == "Handled: hello"
+        )
 
-    summary = client.orchestrator.status()
-    assert summary.details.projects == []
+        summary = client.orchestrator.status()
+        assert summary.details.projects == []
 
-    campaign = client.orchestrator.status(CampaignStatusQuery(campaignId="camp-1"))
-    assert campaign.details.campaign.id == "camp-1"
+        campaign = client.orchestrator.status(CampaignStatusQuery(campaignId="camp-1"))
+        assert campaign.details.campaign.id == "camp-1"
 
-    artifacts = client.orchestrator.artifacts(ArtifactListQuery(projectId="proj"))
-    assert artifacts.details.artifacts == []
+        artifacts = client.orchestrator.artifacts(ArtifactListQuery(projectId="proj"))
+        assert artifacts.details.artifacts == []
 
-    site = client.site.status(verbose=True)
-    assert isinstance(site.details, SiteStatus)
-    assert site.details.site_id == "local"
+        site = client.site.status(verbose=True)
+        assert isinstance(site.details, SiteStatus)
+        assert site.details.site_id == "local"
 
-    logs = client.site.logs(LogsQuery(sessionName="demo", limitChars=500))
-    assert logs.details.target_id == "demo"
+        logs = client.site.logs(LogsQuery(sessionName="demo", limitChars=500))
+        assert logs.details.target_id == "demo"
 
-    client.close()
+    assert raw_client.is_closed is True
 
 
 def test_client_raises_request_error_on_http_failure() -> None:

@@ -7,6 +7,7 @@ from typing import Any, Literal
 
 from pydantic import Field, field_validator
 
+from ._io import atomic_write_text
 from .errors import ConfigurationError
 from .models import AgentKind, PermissionMode
 from .paths import (
@@ -31,6 +32,8 @@ class ConfigModel(BaseModel):
 
 
 class LocalWorkerSettings(ConfigModel):
+    """Settings describing the local worker manifest exposed to Puppenclaw."""
+
     id: str = "local"
     label: str = "Local Worker"
     labels: list[str] = Field(default_factory=lambda: ["local"])
@@ -48,6 +51,8 @@ class PurePipeRemoteControlSettings(ConfigModel):
 
 
 class RemoteControlSettings(ConfigModel):
+    """Wrapper-side remote-control policy that is rendered into Puppenclaw config."""
+
     mediated: MediatedRemoteControlSettings = Field(default_factory=MediatedRemoteControlSettings)
     pure_pipe: PurePipeRemoteControlSettings = Field(
         default_factory=PurePipeRemoteControlSettings,
@@ -57,6 +62,8 @@ class RemoteControlSettings(ConfigModel):
 
 
 class SourceSettings(ConfigModel):
+    """Settings for resolving a local checkout or binary Puppenclaw daemon."""
+
     kind: Literal["checkout", "binary"] = "checkout"
     checkout_path: Path | None = Field(default=None, alias="checkoutPath")
     daemon_command: list[str] | None = Field(default=None, alias="daemonCommand")
@@ -94,6 +101,8 @@ class SourceSettings(ConfigModel):
 
 
 class DaemonSettings(ConfigModel):
+    """Settings for the managed local Puppenclaw daemon process."""
+
     host: str = "127.0.0.1"
     port: int = 18795
     startup_timeout: float = Field(default=30.0, alias="startupTimeout")
@@ -117,6 +126,8 @@ class DaemonSettings(ConfigModel):
 
 
 class AgentSettings(ConfigModel):
+    """Agent command and session defaults forwarded to Puppenclaw."""
+
     default_agent: AgentKind = Field(default="claude", alias="defaultAgent")
     acpx_command: str | None = Field(default=None, alias="acpxCommand")
     codex_command: str = Field(default="npx @zed-industries/codex-acp", alias="codexCommand")
@@ -132,6 +143,8 @@ class AgentSettings(ConfigModel):
 
 
 class OrchestrationSettings(ConfigModel):
+    """Settings for the remote-site orchestration features exposed by Puppenclaw."""
+
     enabled: bool = True
     max_campaigns: int = Field(default=32, alias="maxCampaigns")
     artifact_retention_hours: int = Field(default=336, alias="artifactRetentionHours")
@@ -153,6 +166,8 @@ class OrchestrationSettings(ConfigModel):
 
 
 class WrapperSettings(ConfigModel):
+    """Top-level settings for the Python wrapper, daemon manager, and generated config."""
+
     source: SourceSettings = Field(default_factory=SourceSettings)
     daemon: DaemonSettings = Field(default_factory=DaemonSettings)
     agents: AgentSettings = Field(default_factory=AgentSettings)
@@ -222,21 +237,19 @@ def load_settings(path: Path | None = None) -> WrapperSettings:
 
 def save_settings(settings: WrapperSettings, path: Path | None = None) -> Path:
     config_path = (path or default_config_path()).expanduser().resolve()
-    config_path.parent.mkdir(parents=True, exist_ok=True)
     settings.ensure_directories()
-    config_path.write_text(
+    atomic_write_text(
+        config_path,
         tomli_w.dumps(settings.model_dump(mode="json", by_alias=True, exclude_none=True)),
-        encoding="utf-8",
     )
     return config_path
 
 
 def write_generated_puppenclaw_config(settings: WrapperSettings, path: Path | None = None) -> Path:
     target = (path or settings.daemon.generated_config_path).expanduser().resolve()
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(
+    atomic_write_text(
+        target,
         json.dumps(settings.to_puppenclaw_config(), indent=2) + "\n",
-        encoding="utf-8",
     )
     return target
 
