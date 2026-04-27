@@ -10,8 +10,12 @@ from .errors import RequestError
 from .models import (
     ArtifactListDetails,
     ArtifactListQuery,
+    ArtifactReadDetails,
+    ArtifactReadQuery,
     CampaignActionRequest,
     CampaignCancelDetails,
+    CampaignEventsDetails,
+    CampaignEventsQuery,
     CampaignRunRequest,
     CampaignStatusQuery,
     CampaignStatusSnapshot,
@@ -26,6 +30,12 @@ from .models import (
     OrchestratorStatusSummary,
     ProjectCreateDetails,
     ProjectCreateRequest,
+    ReassessmentRecord,
+    ReassessmentReportDetails,
+    ReassessmentReportQuery,
+    ReassessmentStartRequest,
+    ReassessmentStatusDetails,
+    ReassessmentStatusQuery,
     ResumeSessionRequest,
     SendSessionRequest,
     SessionCostDetails,
@@ -199,12 +209,76 @@ class OrchestratorAPI(_BaseAPI):
             params=_normalize_query(resolved.model_dump(by_alias=True, exclude_none=True)),
         )
 
+    def read_artifact(self, query: ArtifactReadQuery) -> OperationResult[ArtifactReadDetails]:
+        return self._tool_request(
+            "GET",
+            f"/orchestrator/artifacts/{quote(query.artifact_id, safe='')}/content",
+            model=ArtifactReadDetails,
+            params=_normalize_query(
+                query.model_dump(by_alias=True, exclude_none=True, exclude={"artifact_id"})
+            ),
+        )
+
+    def events(self, query: CampaignEventsQuery) -> OperationResult[CampaignEventsDetails]:
+        return self._tool_request(
+            "GET",
+            "/orchestrator/events",
+            model=CampaignEventsDetails,
+            params=_normalize_query(query.model_dump(by_alias=True, exclude_none=True)),
+        )
+
     def approve(self, request: CampaignActionRequest) -> OperationResult[CampaignStatusSnapshot]:
         return self._tool_request(
             "POST",
             "/orchestrator/approve",
             model=CampaignStatusSnapshot,
             json_body=request.model_dump(by_alias=True, exclude_none=True),
+        )
+
+    def start_reassessment(
+        self, request: ReassessmentStartRequest
+    ) -> OperationResult[ReassessmentRecord]:
+        return self._tool_request(
+            "POST",
+            "/orchestrator/reassessment",
+            model=ReassessmentRecord,
+            json_body=request.model_dump(by_alias=True, exclude_none=True),
+        )
+
+    @overload
+    def reassessment_status(
+        self, query: None = None
+    ) -> OperationResult[ReassessmentStatusDetails]: ...
+
+    @overload
+    def reassessment_status(
+        self, query: ReassessmentStatusQuery
+    ) -> OperationResult[ReassessmentRecord | ReassessmentStatusDetails]: ...
+
+    def reassessment_status(
+        self, query: ReassessmentStatusQuery | None = None
+    ) -> OperationResult[ReassessmentRecord | ReassessmentStatusDetails]:
+        resolved = query or ReassessmentStatusQuery()
+        model: type[ReassessmentRecord] | type[ReassessmentStatusDetails] = (
+            ReassessmentRecord
+            if resolved.reassessment_id is not None
+            else ReassessmentStatusDetails
+        )
+        return self._tool_request(
+            "GET",
+            "/orchestrator/reassessment/status",
+            model=model,
+            params=_normalize_query(resolved.model_dump(by_alias=True, exclude_none=True)),
+        )
+
+    def reassessment_report(
+        self, query: ReassessmentReportQuery
+    ) -> OperationResult[ReassessmentReportDetails]:
+        return self._tool_request(
+            "GET",
+            "/orchestrator/reassessment/report",
+            model=ReassessmentReportDetails,
+            params=_normalize_query(query.model_dump(by_alias=True, exclude_none=True)),
         )
 
     def cancel(self, request: CampaignActionRequest) -> OperationResult[CampaignCancelDetails]:

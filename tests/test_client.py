@@ -9,8 +9,13 @@ from pypuppenclaw.client import PuppenclawClient
 from pypuppenclaw.errors import RequestError
 from pypuppenclaw.models import (
     ArtifactListQuery,
+    ArtifactReadQuery,
+    CampaignEventsQuery,
     CampaignStatusQuery,
     LogsQuery,
+    ReassessmentReportQuery,
+    ReassessmentStartRequest,
+    ReassessmentStatusQuery,
     SendSessionRequest,
     SiteStatus,
 )
@@ -123,7 +128,80 @@ def _transport() -> httpx.MockTransport:
                 200,
                 json={
                     "content": [{"type": "text", "text": "Artifacts"}],
-                    "details": {"artifacts": []},
+                    "details": {"artifacts": [_artifact_payload()]},
+                },
+            )
+        if request.url.path == "/orchestrator/artifacts/art-1/content":
+            assert request.url.params.get("limitChars") == "500"
+            return httpx.Response(
+                200,
+                json={
+                    "content": [{"type": "text", "text": "artifact text"}],
+                    "details": {
+                        "artifact": _artifact_payload(),
+                        "text": "artifact text",
+                        "truncated": False,
+                        "limitChars": 500,
+                    },
+                },
+            )
+        if request.url.path == "/orchestrator/events":
+            assert request.url.params.get("campaignId") == "camp-1"
+            return httpx.Response(
+                200,
+                json={
+                    "content": [{"type": "text", "text": "Events"}],
+                    "details": {
+                        "campaignId": "camp-1",
+                        "events": [
+                            {
+                                "type": "campaign",
+                                "createdAt": "2026-01-01T00:00:00Z",
+                                "message": "started",
+                                "phase": "setup",
+                                "candidate": "codex",
+                            }
+                        ],
+                        "cursor": "2026-01-01T00:00:00Z",
+                    },
+                },
+            )
+        if request.url.path == "/orchestrator/reassessment":
+            payload = json.loads(request.content.decode("utf-8"))
+            assert payload["targetModel"] == "gpt-new"
+            return httpx.Response(
+                200,
+                json={
+                    "content": [{"type": "text", "text": "Reassessment"}],
+                    "details": _reassessment_payload(),
+                },
+            )
+        if request.url.path == "/orchestrator/reassessment/status":
+            if request.url.params.get("reassessmentId") == "reassess-1":
+                return httpx.Response(
+                    200,
+                    json={
+                        "content": [{"type": "text", "text": "One reassessment"}],
+                        "details": _reassessment_payload(),
+                    },
+                )
+            return httpx.Response(
+                200,
+                json={
+                    "content": [{"type": "text", "text": "Reassessments"}],
+                    "details": {"reassessments": [_reassessment_payload()]},
+                },
+            )
+        if request.url.path == "/orchestrator/reassessment/report":
+            assert request.url.params.get("reassessmentId") == "reassess-1"
+            return httpx.Response(
+                200,
+                json={
+                    "content": [{"type": "text", "text": "Report"}],
+                    "details": {
+                        "reassessment": _reassessment_payload(),
+                        "report": "report text",
+                    },
                 },
             )
         if request.url.path == "/site/status":
@@ -189,7 +267,35 @@ def test_client_parses_health_and_tool_results() -> None:
         assert campaign.details.campaign.id == "camp-1"
 
         artifacts = client.orchestrator.artifacts(ArtifactListQuery(projectId="proj"))
-        assert artifacts.details.artifacts == []
+        assert artifacts.details.artifacts[0].id == "art-1"
+
+        artifact = client.orchestrator.read_artifact(
+            ArtifactReadQuery(artifactId="art-1", limitChars=500)
+        )
+        assert artifact.details.text == "artifact text"
+        assert artifact.details.limit_chars == 500
+
+        events = client.orchestrator.events(CampaignEventsQuery(campaignId="camp-1"))
+        assert events.details.events[0].candidate == "codex"
+
+        reassessment = client.orchestrator.start_reassessment(
+            ReassessmentStartRequest(
+                projectId="proj",
+                workerId="local",
+                targetModel="gpt-new",
+            )
+        )
+        assert reassessment.details.id == "reassess-1"
+        reassessment_list = client.orchestrator.reassessment_status()
+        assert reassessment_list.details.reassessments[0].id == "reassess-1"
+        reassessment_one = client.orchestrator.reassessment_status(
+            ReassessmentStatusQuery(reassessmentId="reassess-1")
+        )
+        assert reassessment_one.details.id == "reassess-1"
+        report = client.orchestrator.reassessment_report(
+            ReassessmentReportQuery(reassessmentId="reassess-1")
+        )
+        assert report.details.report == "report text"
 
         site = client.site.status(verbose=True)
         assert isinstance(site.details, SiteStatus)
@@ -214,3 +320,48 @@ def test_client_raises_request_error_on_http_failure() -> None:
 
     with pytest.raises(RequestError, match="boom"):
         client.sessions.list()
+
+
+def _artifact_payload() -> dict[str, object]:
+    return {
+        "id": "art-1",
+        "projectId": "proj",
+        "campaignId": "camp-1",
+        "runId": None,
+        "stepId": None,
+        "siteId": "local",
+        "kind": "context",
+        "title": "Context",
+        "summary": None,
+        "relativePath": "artifacts/context.txt",
+        "createdAt": "2026-01-01T00:00:00Z",
+        "sizeBytes": 12,
+        "sha256": "abc",
+    }
+
+
+def _reassessment_payload() -> dict[str, object]:
+    return {
+        "id": "reassess-1",
+        "projectId": "proj",
+        "workerId": "local",
+        "state": "completed",
+        "targetModel": "gpt-new",
+        "targetAgent": "codex",
+        "providers": ["puppenclaw"],
+        "baseRef": "HEAD",
+        "baseCommit": None,
+        "branch": "puppenclaw-reassess-demo",
+        "worktreePath": "/tmp/reassess",
+        "validationCommand": "pytest",
+        "validationExitCode": 0,
+        "patchCommit": "abc123",
+        "importedSessions": [],
+        "warnings": [],
+        "artifactIds": {"report": "art-1"},
+        "reportText": "report text",
+        "lastError": None,
+        "createdAt": "2026-01-01T00:00:00Z",
+        "updatedAt": "2026-01-01T00:00:00Z",
+        "completedAt": "2026-01-01T00:00:01Z",
+    }

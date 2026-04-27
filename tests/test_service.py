@@ -45,6 +45,7 @@ def test_service_running_context_starts_and_stops(temp_settings) -> None:
         assert yielded is client
 
     assert manager.calls == ["install", "start", "stop"]
+    assert client.closed is True
 
 
 def test_service_close_closes_client(temp_settings) -> None:

@@ -52,4 +52,7 @@ class PuppenclawService:
         try:
             yield self.client
         finally:
-            self.stop()
+            try:
+                self.stop()
+            finally:
+                self.close()

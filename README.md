@@ -9,6 +9,7 @@
 - starts and stops the daemon as a managed background process
 - exposes a synchronous `httpx` client with typed request and response models
 - provides a small CLI for `doctor`, `install`, `config-init`, `start`, `stop`, and `status`
+- provides `puppencode`, a fusion-first terminal coding CLI on top of Puppenclaw
 
 ## Current bootstrap mode
 
@@ -28,6 +29,16 @@ pypuppenclaw doctor
 pypuppenclaw install
 pypuppenclaw start
 ```
+
+Terminal coding usage:
+
+```bash
+puppencode init
+puppencode "implement the failing test fix"
+puppencode chat
+```
+
+In `puppencode chat`, slash commands support prompt-toolkit completion and unique-prefix execution: `/ex` previews `/exit`, and Enter executes it.
 
 Python usage:
 

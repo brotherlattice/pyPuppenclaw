@@ -282,6 +282,7 @@ class CampaignSpecRecord(Model):
     created_at: str = Field(alias="createdAt")
     updated_at: str = Field(alias="updatedAt")
     state: CampaignState
+    fusion: dict[str, Any] | None = None
 
 
 class RunRecord(Model):
@@ -342,6 +343,27 @@ class OrchestratorStatusSummary(Model):
 
 class ArtifactListDetails(Model):
     artifacts: list[ArtifactRecord] = Field(default_factory=list)
+
+
+class ArtifactReadDetails(Model):
+    artifact: ArtifactRecord
+    text: str
+    truncated: bool
+    limit_chars: int = Field(alias="limitChars")
+
+
+class FusionEventRecord(Model):
+    type: str
+    created_at: str = Field(alias="createdAt")
+    message: str
+    phase: str
+    candidate: AgentKind | None = None
+
+
+class CampaignEventsDetails(Model):
+    campaign_id: str = Field(alias="campaignId")
+    events: list[FusionEventRecord] = Field(default_factory=list)
+    cursor: str | None = None
 
 
 class SiteAgentAvailability(Model):
@@ -462,6 +484,57 @@ class ManagedDaemonStatus(Model):
     install_manifest: InstallManifest | None = Field(default=None, alias="installManifest")
 
 
+class ImportedReassessmentSession(Model):
+    id: str
+    provider: str
+    title: str
+    source_path: str | None = Field(default=None, alias="sourcePath")
+    project_root: str | None = Field(default=None, alias="projectRoot")
+    detected_model: str | None = Field(default=None, alias="detectedModel")
+    created_at: str | None = Field(default=None, alias="createdAt")
+    updated_at: str = Field(alias="updatedAt")
+    transcript_hash: str = Field(alias="transcriptHash")
+    transcript_chars: int = Field(alias="transcriptChars")
+    transcript_preview: str = Field(alias="transcriptPreview")
+
+
+class ReassessmentRecord(Model):
+    id: str
+    project_id: str = Field(alias="projectId")
+    worker_id: str = Field(alias="workerId")
+    state: str
+    target_model: str = Field(alias="targetModel")
+    target_agent: AgentKind = Field(alias="targetAgent")
+    providers: list[str] = Field(default_factory=list)
+    base_ref: str = Field(alias="baseRef")
+    base_commit: str | None = Field(default=None, alias="baseCommit")
+    branch: str | None = None
+    worktree_path: str | None = Field(default=None, alias="worktreePath")
+    validation_command: str | None = Field(default=None, alias="validationCommand")
+    validation_exit_code: int | None = Field(default=None, alias="validationExitCode")
+    patch_commit: str | None = Field(default=None, alias="patchCommit")
+    imported_sessions: list[ImportedReassessmentSession] = Field(
+        default_factory=list,
+        alias="importedSessions",
+    )
+    warnings: list[str] = Field(default_factory=list)
+    artifact_ids: dict[str, str] = Field(default_factory=dict, alias="artifactIds")
+    report_text: str | None = Field(default=None, alias="reportText")
+    last_error: str | None = Field(default=None, alias="lastError")
+    created_at: str = Field(alias="createdAt")
+    updated_at: str = Field(alias="updatedAt")
+    completed_at: str | None = Field(default=None, alias="completedAt")
+
+
+class ReassessmentStatusDetails(Model):
+    reassessments: list[ReassessmentRecord] = Field(default_factory=list)
+
+
+class ReassessmentReportDetails(Model):
+    reassessment: ReassessmentRecord
+    report: str
+
+
 class StartSessionRequest(Model):
     agent: AgentKind
     name: str
@@ -566,8 +639,44 @@ class ArtifactListQuery(Model):
     format: ResponseFormat | None = None
 
 
+class ArtifactReadQuery(Model):
+    artifact_id: str = Field(alias="artifactId")
+    limit_chars: int = Field(default=120000, alias="limitChars")
+    format: ResponseFormat | None = None
+
+
+class CampaignEventsQuery(Model):
+    campaign_id: str = Field(alias="campaignId")
+    after: str | None = None
+    limit: int = 100
+    format: ResponseFormat | None = None
+
+
 class CampaignActionRequest(Model):
     campaign_id: str = Field(alias="campaignId")
+    format: ResponseFormat | None = None
+
+
+class ReassessmentStartRequest(Model):
+    project_id: str = Field(alias="projectId")
+    worker_id: str = Field(alias="workerId")
+    target_model: str = Field(alias="targetModel")
+    target_agent: AgentKind | None = Field(default=None, alias="targetAgent")
+    providers: list[str] = Field(default_factory=lambda: ["puppenclaw", "codex", "claude"])
+    validation_command: str | None = Field(default=None, alias="validationCommand")
+    base_ref: str | None = Field(default=None, alias="baseRef")
+    limit: int = 20
+    format: ResponseFormat | None = None
+
+
+class ReassessmentStatusQuery(Model):
+    reassessment_id: str | None = Field(default=None, alias="reassessmentId")
+    project_id: str | None = Field(default=None, alias="projectId")
+    format: ResponseFormat | None = None
+
+
+class ReassessmentReportQuery(Model):
+    reassessment_id: str = Field(alias="reassessmentId")
     format: ResponseFormat | None = None
 
 
