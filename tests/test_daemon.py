@@ -54,7 +54,7 @@ def test_manager_start_status_stop(temp_settings, tmp_path: Path) -> None:
     assert manager.status().running is False
 
 
-def test_manager_cleans_stale_runtime(temp_settings, tmp_path: Path) -> None:
+def test_manager_cleans_stale_runtime(temp_settings, tmp_path: Path, monkeypatch) -> None:
     runtime_path = tmp_path / "runtime.json"
     runtime = DaemonRuntimeInfo(
         pid=999999,
@@ -81,6 +81,7 @@ def test_manager_cleans_stale_runtime(temp_settings, tmp_path: Path) -> None:
         pid_path=tmp_path / "daemon.pid",
         runtime_path=runtime_path,
     )
+    monkeypatch.setattr("pypuppenclaw.daemon._pid_exists", lambda pid: pid != runtime.pid)
 
     status = manager.status()
 

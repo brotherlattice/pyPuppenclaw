@@ -328,7 +328,11 @@ class PuppenclawClient:
         client: httpx.Client | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
-        self._client = client or httpx.Client(base_url=self.base_url, timeout=timeout)
+        self._client = client or httpx.Client(
+            base_url=self.base_url,
+            timeout=timeout,
+            trust_env=False,
+        )
         self.sessions = SessionsAPI(self)
         self.orchestrator = OrchestratorAPI(self)
         self.site = SiteAPI(self)

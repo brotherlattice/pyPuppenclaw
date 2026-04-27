@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 import os
 import signal
 import subprocess
@@ -225,7 +226,10 @@ class PuppenclawManager:
 
     def healthcheck(self) -> HealthStatus:
         try:
-            with httpx.Client(timeout=self.settings.daemon.request_timeout) as client:
+            with httpx.Client(
+                timeout=self.settings.daemon.request_timeout,
+                trust_env=False,
+            ) as client:
                 response = client.get(f"{self.settings.daemon.base_url}/health")
                 response.raise_for_status()
                 return HealthStatus.model_validate(response.json())
@@ -234,7 +238,10 @@ class PuppenclawManager:
 
     def _request_shutdown(self) -> None:
         with suppress(Exception):
-            with httpx.Client(timeout=self.settings.daemon.request_timeout) as client:
+            with httpx.Client(
+                timeout=self.settings.daemon.request_timeout,
+                trust_env=False,
+            ) as client:
                 client.post(f"{self.settings.daemon.base_url}/shutdown")
 
     def _write_runtime(self, runtime: DaemonRuntimeInfo) -> None:
@@ -296,15 +303,23 @@ class PuppenclawManager:
 
 
 def _pid_exists(pid: int) -> bool:
+    if pid <= 0:
+        return False
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
         return False
     except PermissionError:
         return True
-    except OSError:
+    except OSError as error:
+        if _is_missing_pid_error(error):
+            return False
         return True
     return True
+
+
+def _is_missing_pid_error(error: OSError) -> bool:
+    return error.errno in {errno.ESRCH, errno.EINVAL} or getattr(error, "winerror", None) == 87
 
 
 def _read_log_tail(path: Path, *, max_lines: int = 20) -> str:
